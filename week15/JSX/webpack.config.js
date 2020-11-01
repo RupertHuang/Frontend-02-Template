@@ -8,11 +8,29 @@ module.exports = {
                     loader: "babel-loader",
                     options: {
                         presets: ["@babel/preset-env"],
-                        plugins: [["@babel/plugin-transform-react-jsx", {pragma: "createElement"}]]
+                        plugins: [[
+                            "@babel/plugin-transform-react-jsx", 
+                            {pragma: "createElement"}
+                        ]]
                     }
+                }
+            },
+            {
+                test: /\.view/,
+                use:{
+                    loader: require.resolve("./myloader.js")
+                }
+            },
+            {
+                test: /\.css$/,
+                use:{
+                    loader: require.resolve("./cssloader.js")
                 }
             }
         ]
     },
-    mode: "development"
-}
+    mode: "development",
+    optimization: {
+        minimize: false
+    }
+};

@@ -1,0 +1,29 @@
+<style>
+    #e1 {
+        width: 100px;
+        height: 100px;
+        background-color: skyblue;
+    }
+</style>
+<div id="e1"></div>
+<button onclick="start();">start</button>
+<button onclick="stop();">stop</button>
+<script>
+    let e1 = document.getElementById("e1")
+    e1.style.transition = "ease 5s";
+
+    function start(){
+        e1.style.transform = "translate(300px, 300px)";
+    }
+
+    function stop(){
+
+        console.log(getComputedStyle(e1).transform);
+
+        e1.style.transition = "none";
+    }
+
+
+
+    
+</script>

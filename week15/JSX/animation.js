@@ -1,95 +1,162 @@
-const TICK = Symbol('tick');
-const TICK_HANDLER = Symbol('tick_handler');
-const ANIMATIONS = Symbol('animations');
-const ANIMATION_START_TIME = Symbol('animation_start_time');
-const PAUSE_START = Symbol('pause_start');
-const PAUSE_TIME = Symbol('pause_time');
-const STATE_INIT = Symbol('init');
-const STATE_START = Symbol('start');
-const STATE_PAUSE =Symbol('pause');
+export class Timeline {
+    constructor(){
+        this.animations = new Set();
+        this.finishedAnimations = new Set();
+        this.addTimes = new Map();
+        this.requesID = null;
+        this.state = "inited"
+        this.tick = () => {
+            let t = Date.now() - this.startTime;
+            for(let animation of this.animations) {
 
-export class Timeline{
-    constructor() {
-        this[ANIMATIONS] = new Set();
-        this[ANIMATION_START_TIME] = new Map();
-        this.state = STATE_INIT;
-    }
-    // get rate() {}
-    // set rate() {}
-    add(animation, startTime) {
-        startTime = startTime || Date.now();
-        this[ANIMATIONS].add(animation);
-        this[ANIMATION_START_TIME].set(animation, startTime);
-    }
-    start() {
-        if (this.state !== STATE_INIT) return;
-        this.state = STATE_START;
+                let {object, property, template, start, end, duration, timingFunction, delay } = animation;
 
-        const startTime = Date.now();
-        this[PAUSE_TIME] = 0;
+                let addTimes = this.addTimes.get(animation);
 
-        this[TICK] = () => {
-            const now = Date.now();
-            for(let animation of this[ANIMATIONS]) {
-                let t;
-                const startTimeMax = Math.max(this[ANIMATION_START_TIME].get(animation), startTime);
-                t = now - startTimeMax - this[PAUSE_TIME] - animation.delay;
+                if(t < delay + addTime)
+                    continue;
 
-                if(animation.duration < t) {
-                    this[ANIMATIONS].delete(animation);
-                    t = animation.duration;
+                let progression = timingFunction((t - delay - addTime)/duration); // 0-1之间的数
+
+                if(t > duration + delay + addTime) {
+                    progression = 1;
+                    this.animations.delete(animation);
+                    this.finishedAnimations.add(animation);
                 }
 
-                if(t > 0) 
-                    animation.receive(t);
+                let value = animation.valueFromProgression(progression);
+                // value就是根据progression算出的当前值
+                //console.log(object, property);
+                object[property] = template(value);
             }
-            this[TICK_HANDLER] = requestAnimationFrame(this[TICK]);
+            if(this.animations.size)
+                this.requestID = requestAnimationFrame(this.tick);
+            else
+                this.requestID = null;
         }
-
-        this[TICK]();
     }
-    pause() {
-        if(this.state !== STATE_START) return;
-        this.state = STATE_PAUSE;
 
-        this[PAUSE_START] = Date.now();
-        cancelAnimationFrame(this[TICK_HANDLER]);
+    pause(){
+        if(this.state !== "playing")
+            return;
+        this.state = "paused"
+        this.pauseTime = Date.now();
+        if(this.requestID !== null) {
+            cancelAnimationFrame(this.requestID);
+            this.requestID = null;
+        }
     }
-    resume() {
-        if(this.state !== STATE_PAUSE) return;
-        this.state = STATE_START;
 
-        this[PAUSE_TIME] += Date.now() - this[PAUSE_START];
-        this[TICK]();
+    resume(){
+        if(this.state !== "paused")
+            return;
+        this.state = "playing"
+        this.startTime += Date.now() - this.pauseTime;
+        this.tick();
     }
-    reset() {
-        this.pause();
-        this.state = Date.now();
-        this[PAUSE_TIME] = 0;
-        this[PAUSE_START] = 0;
-        this[ANIMATIONS] = new Set();
-        this[ANIMATION_START_TIME] = new Map();
-        this[TICK_HANDLER] = null;
+
+    start(){
+        if(this.state !== "inited")
+            return;
+        this.state = "playing"
+        this.startTime = Date.now();
+        this.tick();
+    }
+
+    reset(){
+        if(this.state === "playing")
+            this.pause();
+        this.animations = new Set;
+        this.finishedAnimations = new Set;
+        this.addTimes = new Map;
+        this.requestID = null;
+        this.startTime = Date.now();
+        this.pauseTime = null;
+        this.state = "inited"
+    }
+
+    restart(){
+        if(this.state === "playing")
+            this.pause();
+        
+        for(let animation of this.finishedAnimations)
+            this.animatinos.add(animation);
+
+        this.finishedAnimations = new Set();
+        this.requestID = null;
+        this.state = "playing";
+        this.startTime = Date.now();
+        this.pauseTime = null;
+        this.tick();
+    }
+
+    add(animation, addTime){
+        this.animations.add(animation);
+        if(this.state === "playing" && this.requestID === null)
+            this.tick();
+        
+        if(this.state === "playing")
+            this.addTimes.set(animation, addTime !== void 0 ? addTime : Date.now() - this.startTime)
+        else
+            this.addTimes.set(animation, addTime !== void 0 ? addTime : 0);
     }
 }
 
 export class Animation {
-    constructor(object, property, startValue, endValue, duration, delay, timingFn, template) {
+    constructor(object, property, start, end, duration, delay, timingFunction, template) {
         this.object = object;
+        this.template = template;
         this.property = property;
-        this.startValue = startValue;
-        this.endValue = endValue;
+        this.start = start;
+        this.end = end;
         this.duration = duration;
-        this.delay = delay;
-        console.log("Animation -> constructor -> timingFn", timingFn)
-        this.timingFn = timingFn || (v => v);
-        // template 属性值模板，可兼容translateX(20px)等CSS属性值
-        this.template = template || (v => v);
+        this.timingFunction = timingFunction;
+        //ease linear easeIn easeOut
     }
-    receive(time) {
-        const range = this.endValue - this.startValue;
-        const progress = this.timingFn(time / this.duration);
-        console.log("Animation -> receive -> progress", progress,time / this.duration)
-        this.object[this.property] = this.template(this.startValue + progress * range);
+    valueFromProgression(progression) {
+        return this.start + progression * (this.end - this.start);
     }
 }
+
+export class ColorAnimation {
+    constructor(object, property, start, end, duration, delay, timingFunction, template) {
+        this.object = object;
+        this.template = template || (v => `rgba(${v.r}, ${v.g}, ${v.b}, ${v.a})`);
+        this.property = property;
+        this.start = start;
+        this.end = end;
+        this.duration = duration;
+        this.delay = delay;
+        this.timingFunction = timingFunction;
+        //ease linear easeIn easeOut
+    }
+    valueFromProgression(progression) {
+        return {
+            r: this.start.r + progression * (this.end.r - this.start.r),
+            g: this.start.g + progression * (this.end.g - this.start.g),
+            b: this.start.b + progression * (this.end.b - this.start.b),
+            a: this.start.a + progression * (this.end.a - this.start.a),
+        }
+    }
+}
+
+
+/*
+
+let animation = new Animation(object, property, start, end, duration, delay, timingFunction);
+let animation2 = new Animation(object2, property2, start, end, duration, delay, timingFunction)
+
+let timeline = new Timeline;
+
+timeline.start()
+timeline.pause()
+timeline.resuem()
+timeline.stop()
+
+setTimeout
+setInterval
+requestAnimationFrame
+
+
+
+*/
